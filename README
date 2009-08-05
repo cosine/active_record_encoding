@@ -21,8 +21,9 @@ Installation:
 #   ActiveRecordEncoding.external_encoding = 'ISO-8859-1'
 #   ActiveRecordEncoding.internal_encoding = 'UTF-8'
 #
-# These values default to Encoding.default_external and
-# Encoding.default_internal respectively, if not explicitly set.
+# If the external_encoding is not explicitly set then no conversions
+# will be done.  The internal_encoding value defaults to
+# Encoding.default_internal if not explicitly set.
 #
 # The internal_encoding value is the encoding of the Strings that are
 # returned by ActiveRecord from String-based columns.  The

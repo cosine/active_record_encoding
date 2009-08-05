@@ -14,8 +14,9 @@
 #   ActiveRecordEncoding.external_encoding = 'ISO-8859-1'
 #   ActiveRecordEncoding.internal_encoding = 'UTF-8'
 #
-# These values default to Encoding.default_external and
-# Encoding.default_internal respectively, if not explicitly set.
+# If the external_encoding is not explicitly set then no conversions
+# will be done.  The internal_encoding value defaults to
+# Encoding.default_internal if not explicitly set.
 #
 # The internal_encoding value is the encoding of the Strings that are
 # returned by ActiveRecord from String-based columns.  The
@@ -99,14 +100,15 @@ module ActiveRecordEncoding::ActiveRecordExtensionClassMethods
 
   def active_record_external_encoding #:nodoc:
     @active_record_external_encoding ||
-        ActiveRecordEncoding.external_encoding ||
-        Encoding.default_external
+        ActiveRecordEncoding.external_encoding
   end
 
   def active_record_internal_encoding #:nodoc:
     @active_record_internal_encoding ||
         ActiveRecordEncoding.internal_encoding ||
-        Encoding.default_internal
+        Encoding.default_internal ||
+        Encoding.default_external ||
+        'UTF-8'
   end
 end
 
@@ -120,8 +122,11 @@ class ActiveRecord::Base #:nodoc:
 
     if value.respond_to? :encoding and value.encoding.to_s.eql?('ASCII-8BIT')
       external_encoding = self.class.active_record_external_encoding
-      internal_encoding = self.class.active_record_internal_encoding
-      value.force_encoding(external_encoding).encode!(internal_encoding)
+
+      if external_encoding = self.class.active_record_external_encoding
+        internal_encoding = self.class.active_record_internal_encoding
+        value.force_encoding(external_encoding).encode!(internal_encoding)
+      end
     end
 
     value
@@ -132,8 +137,9 @@ class ActiveRecord::Base #:nodoc:
 
 
   def encoding_aware_write_attribute (attr_name, value)
-    if value.respond_to? :encoding
-      value = value.encode(self.class.active_record_external_encoding)
+    if value.respond_to? :encoding and
+          external_encoding = self.class.active_record_external_encoding
+      value = value.encode(external_encoding)
     end
 
     pre_encoding_aware_write_attribute(attr_name, value)
