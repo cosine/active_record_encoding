@@ -1,4 +1,10 @@
 #
+# Copyright (c) 2009, Michael H. Buselli
+# See LICENSE for details.  All other rights reserved.
+#
+#######
+
+#
 # ActiveRecordEncoding — Module to make ActiveRecord aware of Unicode
 # encoding issues.
 #

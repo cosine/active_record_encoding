@@ -1,0 +1,40 @@
+#
+# Copyright (c) 2009, Michael H. Buselli
+# See LICENSE for details.  All other rights reserved.
+#
+
+=======
+
+Installation:
+
+    gem install cosine-active_record_encoding --source=http://gems.github.com/
+
+=======
+
+#
+# ActiveRecordEncoding — Module to make ActiveRecord aware of Unicode
+# encoding issues.
+#
+# ActiveRecordEncoding keeps two variables on the default encoding to
+# use when accessing the database.
+#
+#   ActiveRecordEncoding.external_encoding = 'ISO-8859-1'
+#   ActiveRecordEncoding.internal_encoding = 'UTF-8'
+#
+# These values default to Encoding.default_external and
+# Encoding.default_internal respectively, if not explicitly set.
+#
+# The internal_encoding value is the encoding of the Strings that are
+# returned by ActiveRecord from String-based columns.  The
+# external_encoding value tells ActiveRecord how the database is
+# encoding the data.  A conversion is done if necessary.
+#
+# When data is being saved back to the database, the internal_encoding
+# value is ignored and the encoding of the input is used to determine
+# how to encode the data in the external_encoding.
+#
+# Encodings may also be defined on a table-by-table basis in the model
+# definition.  A future version of ActiveRecordEncoding may support
+# setting the encoding on a column-by-column basis, but that is not
+# currently possible.
+#
