@@ -167,16 +167,33 @@ module ActiveRecordEncoding::ActiveRecordExtensionClassMethods
         Encoding.default_external ||
         'UTF-8'
   end
+
+
+  # Redefine the attribute read method to do the conversion.
+  def encoding_aware_define_read_method (symbol, attr_name, column) #:nodoc:
+    pre_encoding_aware_define_read_method(symbol, attr_name, column)
+    method_name = "encoding_aware_attr_#{symbol}".to_sym
+    old_method_name = "pre_#{method_name}".to_sym
+    code = <<-__EOM__
+      encoding_aware_attribute_cast!(#{attr_name.inspect}, #{old_method_name})
+    __EOM__
+    evaluate_attribute_method attr_name, "def #{method_name}; #{code}; end"
+    alias_method "pre_#{method_name}".to_sym, symbol
+    alias_method symbol, method_name
+  end
 end
 
 
 class ActiveRecord::Base #:nodoc:
   extend ActiveRecordEncoding::ActiveRecordExtensionClassMethods
 
-  # Normal replacement method for read_attribute.
-  def pure_encoding_aware_read_attribute (attr_name) #:nodoc:
-    value = pre_encoding_aware_read_attribute(attr_name)
+  class << self
+    alias_method :pre_encoding_aware_define_read_method, :define_read_method
+    alias_method :define_read_method, :encoding_aware_define_read_method
+  end
 
+  # Method that casts the Binary data into Unicode, if necessary.
+  def encoding_aware_attribute_cast! (attr_name, value) #:nodoc:
     if value.respond_to? :encoding and
         value.encoding.to_s.eql?('ASCII-8BIT') and
         ext_encoding = self.class.active_record_external_encoding(attr_name) \
@@ -186,6 +203,12 @@ class ActiveRecord::Base #:nodoc:
     end
 
     value
+  end
+
+  # Normal replacement method for read_attribute.
+  def pure_encoding_aware_read_attribute (attr_name) #:nodoc:
+    value = pre_encoding_aware_read_attribute(attr_name)
+    encoding_aware_attribute_cast!(attr_name, value)
   end
   private :pure_encoding_aware_read_attribute
 
