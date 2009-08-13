@@ -14,36 +14,32 @@ Installation:
 #
 # ActiveRecordEncoding — Module to make ActiveRecord aware of Unicode
 # encoding issues on Ruby 1.9.  This software is not supported on Ruby
-# 1.8 at all, and never will be.  It should be used only if the
-# underlying database does not or cannot properly handle the encoding of
-# data that is returned as "ASCII-8BIT" encoded data.  Most databases
-# can properly encode data, so your first assumption should be that you
-# do not need this software unless you really know you need it.
+# 1.8 at all, and probably never will be.  It should be used only if the
+# underlying database and its driver does not or cannot properly handle
+# the encoding of the data it returns (usually as "ASCII-8BIT").  Most
+# databases can properly encode data, however, so your first assumption
+# should be that you do not need this software unless you really know
+# you need it.
 #
-# ActiveRecordEncoding keeps two variables on the default encoding to
-# use when accessing the database.
+# ActiveRecordEncoding keeps two variables for each column and table
+# where encoding is requested:  a required external_encoding value and
+# an optional internal_encoding value.
 #
-#   ActiveRecordEncoding.external_encoding = 'ISO-8859-1'
+# External encodings must be defined for each column or table where
+# a translation is to occur, and this is done in the model definition:
+#
+#   class User < ActiveRecord::Base
+#     external_encoding 'ISO-8859-1', :for => :comment
+#     external_encoding 'ISO-8859-1', :for => [:first_name, :last_name]
+#   end
+#
+# A similar internal_encoding method exists and specifies what encoding
+# to use internally for each column or table, but this may also be set
+# systemwide in the Rails environment files:
+#
 #   ActiveRecordEncoding.internal_encoding = 'UTF-8'
-#
-# Deprecation Notice:  ActiveRecordEncoding.external_encoding will be
-# discontinued in favor of explicitly setting encodings for particular
-# tables and columns in a future version.
-#
-# If the external_encoding is not explicitly set then no conversions
-# will be done.  The internal_encoding value defaults to
-# Encoding.default_internal if not explicitly set.
-#
-# The internal_encoding value is the encoding of the Strings that are
-# returned by ActiveRecord from String-based columns.  The
-# external_encoding value tells ActiveRecord how the database is
-# actually encoding the data that is being returned as "ASCII-8BIT".
-# A conversion is done if necessary.
 #
 # When data is being saved back to the database, the internal_encoding
 # value is ignored and the encoding of the input is used to determine
-# how to encode the data in the external_encoding.
-#
-# Encodings may also be defined on a table-by-table basis or
-# a column-by-column basis in the model definition.
+# how to convert data to the external_encoding.
 #
