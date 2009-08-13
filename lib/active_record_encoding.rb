@@ -75,7 +75,7 @@ module ActiveRecordEncoding::StandardClassMethods
 
     if attr_names = options[:for]
       [*attr_names].each do |attr_name|
-        active_record_encodings[attr_name.to_s][:ext] = new_encoding
+        @active_record_encodings[attr_name.to_s][:ext] = new_encoding
       end
     else
       @active_record_external_encoding = new_encoding
@@ -106,7 +106,7 @@ module ActiveRecordEncoding::StandardClassMethods
 
     if attr_names = options[:for]
       [*attr_names].each do |attr_name|
-        active_record_encodings[attr_name.to_s][:int] = new_encoding
+        @active_record_encodings[attr_name.to_s][:int] = new_encoding
       end
     else
       @active_record_internal_encoding = new_encoding
@@ -138,7 +138,7 @@ module ActiveRecordEncoding::StandardClassMethods
 
     if attr_names = options[:for]
       [*attr_names].each do |attr_name|
-        active_record_encodings[attr_name.to_s] =
+        @active_record_encodings[attr_name.to_s] =
             { :ext => new_encoding, :int => new_encoding }
       end
     else
@@ -157,17 +157,13 @@ end # ActiveRecordEncoding::StandardClassMethods
 #
 module ActiveRecordEncoding::ExtendedClassMethods
 
-  def active_record_encodings #:nodoc:
-    @active_record_encodings ||= Hash.new { |h, k| h[k] = Hash.new }
-  end
-
   def active_record_external_encoding (attr_name = nil) #:nodoc:
-    active_record_encodings[attr_name][:ext] ||
+    @active_record_encodings[attr_name][:ext] ||
         @active_record_external_encoding
   end
 
   def active_record_internal_encoding (attr_name = nil) #:nodoc:
-    active_record_encodings[attr_name][:int] ||
+    @active_record_encodings[attr_name][:int] ||
         @active_record_internal_encoding ||
         ActiveRecordEncoding.internal_encoding ||
         Encoding.default_internal ||
@@ -201,12 +197,15 @@ end # ActiveRecordEncoding::ExtendedClassMethods
 module ActiveRecordEncoding::IncludedInstanceMethods
 
   def self.included (model_class) #:nodoc:
+    return if model_class.instance_variable_get(:@active_record_encodings)
+
     class << model_class
       alias_method :pre_encoding_aware_define_read_method, :define_read_method
       alias_method :define_read_method, :encoding_aware_define_read_method
     end
 
     model_class.class_eval do
+      @active_record_encodings = Hash.new { |h, k| h[k] = Hash.new }
       alias_method :pre_encoding_aware_read_attribute, :read_attribute
       alias_method :read_attribute, :encoding_aware_read_attribute
     end
@@ -257,7 +256,7 @@ module ActiveRecordEncoding::IncludedInstanceMethods
     # We need to behave differently if called from
     # #attributes_with_quotes because that is how Rails knows what value
     # to write out.  Doing it this way is an unfortunate kludge.
-    rc = if caller.grep(/`attributes_with_quotes'$/).empty?
+    if caller.grep(/`attributes_with_quotes'$/).empty?
       pure_encoding_aware_read_attribute(attr_name)
     else
       encoding_aware_read_attribute_for_write(attr_name)
