@@ -7,64 +7,49 @@
 #
 # ActiveRecordEncoding — Module to make ActiveRecord aware of Unicode
 # encoding issues on Ruby 1.9.  This software is not supported on Ruby
-# 1.8 at all, and never will be.  It should be used only if the
-# underlying database does not or cannot properly handle the encoding of
-# data that is returned as "ASCII-8BIT" encoded data.  Most databases
-# can properly encode data, so your first assumption should be that you
-# do not need this software unless you really know you need it.
+# 1.8 at all, and probably never will be.  It should be used only if the
+# underlying database and its driver does not or cannot properly handle
+# the encoding of the data it returns (usually as "ASCII-8BIT").  Most
+# databases can properly encode data, however, so your first assumption
+# should be that you do not need this software unless you really know
+# you need it.
 #
-# ActiveRecordEncoding keeps two variables on the default encoding to
-# use when accessing the database.
+# ActiveRecordEncoding keeps two variables for each column and table
+# where encoding is requested:  a required external_encoding value and
+# an optional internal_encoding value.
 #
-#   ActiveRecordEncoding.external_encoding = 'ISO-8859-1'
+# External encodings must be defined for each column or table where
+# a translation is to occur, and this is done in the model definition:
+#
+#   class User < ActiveRecord::Base
+#     external_encoding 'ISO-8859-1', :for => :comment
+#     external_encoding 'ISO-8859-1', :for => [:first_name, :last_name]
+#   end
+#
+# A similar internal_encoding method exists and specifies what encoding
+# to use internally for each column or table, but this may also be set
+# systemwide in the Rails environment files:
+#
 #   ActiveRecordEncoding.internal_encoding = 'UTF-8'
-#
-# Deprecation Notice:  ActiveRecordEncoding.external_encoding will be
-# discontinued in favor of explicitly setting encodings for particular
-# tables and columns in a future version.
-#
-# If the external_encoding is not explicitly set then no conversions
-# will be done.  The internal_encoding value defaults to
-# Encoding.default_internal if not explicitly set.
-#
-# The internal_encoding value is the encoding of the Strings that are
-# returned by ActiveRecord from String-based columns.  The
-# external_encoding value tells ActiveRecord how the database is
-# actually encoding the data that is being returned as "ASCII-8BIT".
-# A conversion is done if necessary.
 #
 # When data is being saved back to the database, the internal_encoding
 # value is ignored and the encoding of the input is used to determine
-# how to encode the data in the external_encoding.
-#
-# Encodings may also be defined on a table-by-table basis or
-# a column-by-column basis in the model definition.
+# how to convert data to the external_encoding.
 #
 module ActiveRecordEncoding
-
   class << self
-    attr_accessor :external_encoding, :internal_encoding
+    attr_accessor :internal_encoding
+    alias :encoding= :internal_encoding=
   end
-
-  #
-  # Set both ActiveRecordEncoding.external_encoding and
-  # ActiveRecordEncoding.internal_encoding in a single method.
-  #
-  #   ActiveRecordEncoding.encoding = 'UTF-8'
-  #
-  def encoding= (new_encoding)
-    @internal_encoding = @external_encoding = new_encoding
-  end
-  module_function :encoding=
 end
 
 
-
-module ActiveRecordEncoding::ActiveRecordExtensionClassMethods
-
-  def active_record_encodings
-    @active_record_encodings ||= Hash.new { |h, k| h[k] = Hash.new }
-  end
+#
+# StandardClassMethods defines class methods for inclusion in
+# ActiveRecord::Base in order to provide the user interface for
+# ActiveRecordEncoding.
+#
+module ActiveRecordEncoding::StandardClassMethods
 
   #
   # Set the external_encoding value for this model class.
@@ -85,6 +70,9 @@ module ActiveRecordEncoding::ActiveRecordExtensionClassMethods
   #   end
   #
   def external_encoding (new_encoding, options = {})
+    extend ActiveRecordEncoding::ExtendedClassMethods
+    include ActiveRecordEncoding::IncludedInstanceMethods
+
     if attr_names = options[:for]
       [*attr_names].each do |attr_name|
         active_record_encodings[attr_name.to_s][:ext] = new_encoding
@@ -113,6 +101,9 @@ module ActiveRecordEncoding::ActiveRecordExtensionClassMethods
   #   end
   #
   def internal_encoding (new_encoding, options = {})
+    extend ActiveRecordEncoding::ExtendedClassMethods
+    include ActiveRecordEncoding::IncludedInstanceMethods
+
     if attr_names = options[:for]
       [*attr_names].each do |attr_name|
         active_record_encodings[attr_name.to_s][:int] = new_encoding
@@ -142,6 +133,9 @@ module ActiveRecordEncoding::ActiveRecordExtensionClassMethods
   #   end
   #
   def encoding (new_encoding, options = {})
+    extend ActiveRecordEncoding::ExtendedClassMethods
+    include ActiveRecordEncoding::IncludedInstanceMethods
+
     if attr_names = options[:for]
       [*attr_names].each do |attr_name|
         active_record_encodings[attr_name.to_s] =
@@ -153,10 +147,23 @@ module ActiveRecordEncoding::ActiveRecordExtensionClassMethods
     end
   end
 
+end # ActiveRecordEncoding::StandardClassMethods
+
+
+#
+# ExtendedClassMethods defines class methods for inclusion in
+# models sub-classed from ActiveRecord::Base to do the dirty work.  It
+# is only included in models that use ActiveRecordEncoding.
+#
+module ActiveRecordEncoding::ExtendedClassMethods
+
+  def active_record_encodings #:nodoc:
+    @active_record_encodings ||= Hash.new { |h, k| h[k] = Hash.new }
+  end
+
   def active_record_external_encoding (attr_name = nil) #:nodoc:
     active_record_encodings[attr_name][:ext] ||
-        @active_record_external_encoding ||
-        ActiveRecordEncoding.external_encoding
+        @active_record_external_encoding
   end
 
   def active_record_internal_encoding (attr_name = nil) #:nodoc:
@@ -172,6 +179,7 @@ module ActiveRecordEncoding::ActiveRecordExtensionClassMethods
   # Redefine the attribute read method to do the conversion.
   def encoding_aware_define_read_method (symbol, attr_name, column) #:nodoc:
     pre_encoding_aware_define_read_method(symbol, attr_name, column)
+    return if active_record_external_encoding(attr_name).nil?
     method_name = "encoding_aware_attr_#{symbol}".to_sym
     old_method_name = "pre_#{method_name}".to_sym
     code = <<-__EOM__
@@ -181,25 +189,42 @@ module ActiveRecordEncoding::ActiveRecordExtensionClassMethods
     alias_method "pre_#{method_name}".to_sym, symbol
     alias_method symbol, method_name
   end
-end
+
+end # ActiveRecordEncoding::ExtendedClassMethods
 
 
-class ActiveRecord::Base #:nodoc:
-  extend ActiveRecordEncoding::ActiveRecordExtensionClassMethods
+#
+# IncludedInstanceMethods defines instance methods for inclusion in
+# models sub-classed from ActiveRecord::Base to do the dirty work.  It
+# is only included in models that use ActiveRecordEncoding.
+#
+module ActiveRecordEncoding::IncludedInstanceMethods
 
-  class << self
-    alias_method :pre_encoding_aware_define_read_method, :define_read_method
-    alias_method :define_read_method, :encoding_aware_define_read_method
+  def self.included (model_class) #:nodoc:
+    class << model_class
+      alias_method :pre_encoding_aware_define_read_method, :define_read_method
+      alias_method :define_read_method, :encoding_aware_define_read_method
+    end
+
+    model_class.class_eval do
+      alias_method :pre_encoding_aware_read_attribute, :read_attribute
+      alias_method :read_attribute, :encoding_aware_read_attribute
+    end
   end
 
   # Method that casts the Binary data into Unicode, if necessary.
   def encoding_aware_attribute_cast! (attr_name, value) #:nodoc:
-    if value.respond_to? :encoding and
-        value.encoding.to_s.eql?('ASCII-8BIT') and
-        ext_encoding = self.class.active_record_external_encoding(attr_name) \
+    if not value.frozen? and
+        not value.instance_variable_get(:@active_record_encoded) \
     then
-      int_encoding = self.class.active_record_internal_encoding(attr_name)
-      value.force_encoding(ext_encoding).encode!(int_encoding)
+      if value.respond_to? :encoding and
+          ext_encoding = self.class.active_record_external_encoding(attr_name) \
+      then
+        int_encoding = self.class.active_record_internal_encoding(attr_name)
+        value.force_encoding(ext_encoding).encode!(int_encoding)
+      end
+
+      value.instance_variable_set(:@active_record_encoded, true)
     end
 
     value
@@ -239,6 +264,7 @@ class ActiveRecord::Base #:nodoc:
     end
   end
 
-  alias_method :pre_encoding_aware_read_attribute, :read_attribute
-  alias_method :read_attribute, :encoding_aware_read_attribute
-end
+end # ActiveRecordEncoding::IncludedInstanceMethods
+
+
+ActiveRecord::Base.extend ActiveRecordEncoding::StandardClassMethods
