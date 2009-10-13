@@ -3,7 +3,7 @@
 
 Gem::Specification.new do |s|
   s.name = 'active_record_encoding'
-  s.version = "0.9.6"
+  s.version = "0.10.0"
   s.summary = "Library to monkey-patch ActiveRecord and add some Unicode awareness"
   s.description = "#{s.summary}\n"
   s.author = "Michael H. Buselli"

@@ -37,10 +37,12 @@
 # how to convert data to the external_encoding.
 #
 module ActiveRecordEncoding
-  class << self
-    attr_accessor :internal_encoding
-    alias :encoding= :internal_encoding=
-  end
+end
+
+
+# Use Iconv if String objects don't know about #encoding
+if not ''.respond_to? :encoding
+  require 'iconv'
 end
 
 
@@ -82,70 +84,7 @@ module ActiveRecordEncoding::StandardClassMethods
     end
   end
 
-  #
-  # Set the internal_encoding value for this model class.
-  #
-  #   class User < ActiveRecord::Base
-  #     internal_encoding 'UTF-8'   # affect all binary columns
-  #   end
-  #
-  # When String objects are returned to the user as a result of an
-  # ActiveRecord database lookup, they will be in the given format.
-  #
-  # This may also be called with the :for option pointing to one or more
-  # specific columns that this call applies to:
-  #
-  #   class User < ActiveRecord::Base
-  #     internal_encoding 'ISO-8859-1', :for => :comment
-  #     internal_encoding 'ISO-8859-1', :for => [:first_name, :last_name]
-  #   end
-  #
-  def internal_encoding (new_encoding, options = {})
-    extend ActiveRecordEncoding::ExtendedClassMethods
-    include ActiveRecordEncoding::IncludedInstanceMethods
-
-    if attr_names = options[:for]
-      [*attr_names].each do |attr_name|
-        @active_record_encodings[attr_name.to_s][:int] = new_encoding
-      end
-    else
-      @active_record_internal_encoding = new_encoding
-    end
-  end
-
-  #
-  # Set both the external_encoding and the internal_encoding values for
-  # this model class.
-  #
-  #   class User < ActiveRecord::Base
-  #     encoding 'UTF-8'    # affect all binary columns
-  #   end
-  #
-  # When data is retrived from the database, it will be assumed it is
-  # encoded in the given format and returned in the same format.
-  #
-  # This may also be called with the :for option pointing to one or more
-  # specific columns that this call applies to:
-  #
-  #   class User < ActiveRecord::Base
-  #     encoding 'ISO-8859-1', :for => :comment
-  #     encoding 'ISO-8859-1', :for => [:first_name, :last_name]
-  #   end
-  #
-  def encoding (new_encoding, options = {})
-    extend ActiveRecordEncoding::ExtendedClassMethods
-    include ActiveRecordEncoding::IncludedInstanceMethods
-
-    if attr_names = options[:for]
-      [*attr_names].each do |attr_name|
-        @active_record_encodings[attr_name.to_s] =
-            { :ext => new_encoding, :int => new_encoding }
-      end
-    else
-      @active_record_external_encoding = new_encoding
-      @active_record_internal_encoding = new_encoding
-    end
-  end
+  alias encoding external_encoding
 
 end # ActiveRecordEncoding::StandardClassMethods
 
@@ -160,15 +99,6 @@ module ActiveRecordEncoding::ExtendedClassMethods
   def active_record_external_encoding (attr_name = nil) #:nodoc:
     @active_record_encodings[attr_name][:ext] ||
         @active_record_external_encoding
-  end
-
-  def active_record_internal_encoding (attr_name = nil) #:nodoc:
-    @active_record_encodings[attr_name][:int] ||
-        @active_record_internal_encoding ||
-        ActiveRecordEncoding.internal_encoding ||
-        Encoding.default_internal ||
-        Encoding.default_external ||
-        'UTF-8'
   end
 
 
@@ -213,16 +143,34 @@ module ActiveRecordEncoding::IncludedInstanceMethods
     end
   end
 
-  # Method that casts the Binary data into Unicode, if necessary.
-  def encoding_aware_attribute_cast! (attr_name, value) #:nodoc:
+  # Method that casts the Binary data into Unicode, if necessary.  On
+  # ":read" operations the value converted from the external encoding to
+  # UTF-8 and the operation happens to the value in place.  On ":write"
+  # operations the value is cast to 'UTF-8' if no encoding is set, but
+  # data is not converted, and the operation happens on a duplicate
+  # object.
+  def encoding_aware_attribute_cast! (attr_name, value, op = :read) #:nodoc:
     if not value.frozen? and
         not value.instance_variable_get(:@active_record_encoded) \
     then
-      if value.respond_to? :encoding and
-          ext_encoding = self.class.active_record_external_encoding(attr_name) \
-      then
-        int_encoding = self.class.active_record_internal_encoding(attr_name)
-        value.force_encoding(ext_encoding).encode!(int_encoding)
+
+      if op == :read
+        if ext_encoding = self.class.active_record_external_encoding(attr_name)
+          if value.respond_to? :encoding
+            value.force_encoding(ext_encoding).encode!('UTF-8')
+          elsif value.respond_to? :mb_chars
+            value.replace Iconv.conv('UTF-8', ext_encoding, value)
+          end
+        end
+
+      elsif op == :write
+        if value.respond_to? :encoding
+          (value = value.dup) rescue nil
+          value.force_encoding('UTF-8') if value.encoding.name == 'ASCII-8BIT'
+        end
+
+      else
+        raise "invalid operation"
       end
 
       value.instance_variable_set(:@active_record_encoded, true)
@@ -244,9 +192,12 @@ module ActiveRecordEncoding::IncludedInstanceMethods
   def encoding_aware_read_attribute_for_write (attr_name) #:nodoc:
     value = pure_encoding_aware_read_attribute(attr_name)
 
-    if value.respond_to? :encoding and
-          ext_encoding = self.class.active_record_external_encoding(attr_name)
-      value = value.encode(ext_encoding).force_encoding('ASCII-8BIT')
+    if ext_encoding = self.class.active_record_external_encoding(attr_name)
+      if value.respond_to? :encoding
+        value = value.encode(ext_encoding).force_encoding('ASCII-8BIT')
+      elsif value.respond_to? :mb_chars
+        value = Iconv.conv(ext_encoding, 'UTF-8', value)
+      end
     end
 
     value
@@ -271,8 +222,7 @@ module ActiveRecordEncoding::IncludedInstanceMethods
   # Otherwise the value is force_encoded according to the rules defined
   # by the user and it results in corrupted data.
   def encoding_aware_write_attribute (attr_name, value) #:nodoc:
-    value = value.dup
-    value.instance_variable_set(:@active_record_encoded, true)
+    value = encoding_aware_attribute_cast!(attr_name, value, :write)
     pre_encoding_aware_write_attribute(attr_name, value)
   end
 
