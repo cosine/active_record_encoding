@@ -208,6 +208,8 @@ module ActiveRecordEncoding::IncludedInstanceMethods
       @active_record_encodings = Hash.new { |h, k| h[k] = Hash.new }
       alias_method :pre_encoding_aware_read_attribute, :read_attribute
       alias_method :read_attribute, :encoding_aware_read_attribute
+      alias_method :pre_encoding_aware_write_attribute, :write_attribute
+      alias_method :write_attribute, :encoding_aware_write_attribute
     end
   end
 
@@ -261,6 +263,17 @@ module ActiveRecordEncoding::IncludedInstanceMethods
     else
       encoding_aware_read_attribute_for_write(attr_name)
     end
+  end
+
+
+  # We need to replace write_attribute so that we can set
+  # +@active_record_encoded+ to +true+ on the value being passed in.
+  # Otherwise the value is force_encoded according to the rules defined
+  # by the user and it results in corrupted data.
+  def encoding_aware_write_attribute (attr_name, value) #:nodoc:
+    value = value.dup
+    value.instance_variable_set(:@active_record_encoded, true)
+    pre_encoding_aware_write_attribute(attr_name, value)
   end
 
 end # ActiveRecordEncoding::IncludedInstanceMethods
