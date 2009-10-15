@@ -6,17 +6,15 @@
 
 #
 # ActiveRecordEncoding — Module to make ActiveRecord aware of Unicode
-# encoding issues on Ruby 1.9.  This software is not supported on Ruby
-# 1.8 at all, and probably never will be.  It should be used only if the
-# underlying database and its driver does not or cannot properly handle
-# the encoding of the data it returns (usually as "ASCII-8BIT").  Most
-# databases can properly encode data, however, so your first assumption
-# should be that you do not need this software unless you really know
-# you need it.
+# encoding issues.  It should be used only if the underlying database
+# and its driver does not or cannot properly handle the encoding of the
+# data it returns (usually as "ASCII-8BIT").  Most databases can
+# properly encode data, however, so your first assumption should be that
+# you do not need this software unless you really know you need it.
 #
-# ActiveRecordEncoding keeps two variables for each column and table
-# where encoding is requested:  a required external_encoding value and
-# an optional internal_encoding value.
+# ActiveRecordEncoding keeps a variables for each column and table
+# where encoding is requested so it knows how the data is encoded in the
+# database.  This variable is called its external_encoding.
 #
 # External encodings must be defined for each column or table where
 # a translation is to occur, and this is done in the model definition:
@@ -26,21 +24,18 @@
 #     external_encoding 'ISO-8859-1', :for => [:first_name, :last_name]
 #   end
 #
-# A similar internal_encoding method exists and specifies what encoding
-# to use internally for each column or table, but this may also be set
-# systemwide in the Rails environment files:
+# Data is converted to UTF-8 when passed to the user.
 #
-#   ActiveRecordEncoding.internal_encoding = 'UTF-8'
-#
-# When data is being saved back to the database, the internal_encoding
-# value is ignored and the encoding of the input is used to determine
-# how to convert data to the external_encoding.
+# When data is being saved back to the database, it is assumed that the
+# data is in UTF-8, or on Ruby 1.9 if the String's encoding value is
+# something other than "ASCII-8BIT" it uses that encoding.
 #
 module ActiveRecordEncoding
 end
 
 
-# Use Iconv if String objects don't know about #encoding
+# Use Iconv if String objects don't know about #encoding.  This is so
+# the library functions on Ruby 1.8.
 if not ''.respond_to? :encoding
   require 'iconv'
 end
@@ -84,6 +79,9 @@ module ActiveRecordEncoding::StandardClassMethods
     end
   end
 
+
+  # With the removal of #internal_encoding, the #encoding method is now
+  # identical to #external_encoding.
   alias encoding external_encoding
 
 end # ActiveRecordEncoding::StandardClassMethods
