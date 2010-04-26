@@ -95,6 +95,18 @@ end # ActiveRecordEncoding::StandardClassMethods
 module ActiveRecordEncoding::ExtendedClassMethods
 
   def active_record_external_encoding (attr_name = nil) #:nodoc:
+    if @active_record_encodings.nil?
+      klass = self.superclass
+      while @active_record_encodings.nil? and klass != ActiveRecord::Base and klass != Object
+        @active_record_encodings = klass.instance_variable_get(:@active_record_encodings)
+        klass = klass.superclass
+      end
+
+      if @active_record_encodings.nil?
+        raise "internal error -- can't find encodings"
+      end
+    end
+
     @active_record_encodings[attr_name][:ext] ||
         @active_record_external_encoding
   end
